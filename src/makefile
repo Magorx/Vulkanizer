@@ -26,7 +26,12 @@ endif
 run: VulkanTest
 	./$(CUR_PROG)
 
-VulkanTest: main.cpp
+VulkanTest: main.cpp vertex.h
+	make compile_shaders
 	$(CPP) $(CFLAGS) -o $(CUR_PROG) main.cpp $(LDFLAGS)
 
 all: VulkanTest
+
+compile_shaders: shaders/shader.vert shaders/shader.frag
+	glslc shaders/shader.vert -o vert.spv
+	glslc shaders/shader.frag -o frag.spv
