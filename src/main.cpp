@@ -465,7 +465,8 @@ void createGraphicsPipeline() {
 
     VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
     inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
-    inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+    inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_LINE_STRIP;
+    //inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_POINT_LIST;
     inputAssembly.primitiveRestartEnable = VK_FALSE;
 
     VkViewport viewport{};
@@ -492,8 +493,10 @@ void createGraphicsPipeline() {
     rasterizer.depthClampEnable = VK_FALSE;
     rasterizer.rasterizerDiscardEnable = VK_FALSE;
 
-    rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
-    rasterizer.lineWidth = 1.0f;
+	// rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
+    // rasterizer.polygonMode = VK_POLYGON_MODE_POINT;
+    rasterizer.polygonMode = VK_POLYGON_MODE_LINE;
+    rasterizer.lineWidth = 5.0f;
 
     rasterizer.cullMode  = VK_CULL_MODE_BACK_BIT;
     rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
@@ -892,7 +895,10 @@ void createLogicalDevice() {
         queueCreateInfos.push_back(queueCreateInfo);
     }
 
-    VkPhysicalDeviceFeatures deviceFeatures{};
+    VkPhysicalDeviceFeatures deviceFeatures {};
+    deviceFeatures.fillModeNonSolid = true;
+    deviceFeatures.wideLines = true;
+    deviceFeatures.largePoints = true;
 
     VkDeviceCreateInfo createInfo{};
     createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
