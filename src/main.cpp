@@ -18,10 +18,13 @@
 #include <algorithm>
 #include <fstream>
 
+#include "conf.h"
+
 #include "vk_inline_utils.h"
 
 #include "vertex.h"
 #include "ubo.h"
+#include "particle.h"
 
 const uint32_t WIDTH  = 800;
 const uint32_t HEIGHT = 600;
@@ -129,6 +132,12 @@ VkDescriptorSetLayout descriptorSetLayout;
 VkPipelineLayout pipelineLayout;
 VkPipeline graphicsPipeline;
 
+VkDescriptorSetLayout computeDescriptorSetLayout;
+VkDescriptorPool computeDescriptorPool;
+VkDescriptorSet computeDescriptorSet;
+VkPipelineLayout computePipelineLayout;
+VkPipeline computePipeline;
+
 std::vector<VkFramebuffer> swapChainFramebuffers;
 
 VkCommandPool commandPool;
@@ -148,6 +157,9 @@ VkDeviceMemory vertexBufferMemory;
 
 VkBuffer indexBuffer;
 VkDeviceMemory indexBufferMemory;
+
+VkBuffer particleBuffer;
+VkDeviceMemory particleBufferMemory;
 
 std::vector<VkBuffer> uniformBuffers;
 std::vector<VkDeviceMemory> uniformBuffersMemory;
@@ -189,12 +201,19 @@ void initVulkan() {
 
     createCommandPool();
 
+    createComputeDescriptorSetLayout();
+    createComputePipeline();
+
     createVertexBuffer();
     createIndexBuffer();
+    createParticleBuffer();
     createUniformBuffers();
 
     createDescriptorPool();
     createDescriptorSets();
+
+    createComputeDescriptorPool();
+    createComputeDescriptorSets();
 
     createCommandBuffers();
     createSyncObjects();
@@ -227,13 +246,57 @@ void recreateSwapChain() {
     imagesInFlight.resize(swapChainImages.size(), VK_NULL_HANDLE);
 }
 
+void createComputePipeline() {
+	auto comp = readFile("comp.spv");
+    
+    VkShaderModule compShaderModule = createShaderModule(comp);
+
+    VkPipelineShaderStageCreateInfo shaderStageCreateInfo = {};
+    shaderStageCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    shaderStageCreateInfo.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+    shaderStageCreateInfo.module = compShaderModule;
+    shaderStageCreateInfo.pName = "main";
+
+    VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo {};
+    pipelineLayoutCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    pipelineLayoutCreateInfo.setLayoutCount = 1;
+    pipelineLayoutCreateInfo.pSetLayouts = &computeDescriptorSetLayout;
+    if (vkCreatePipelineLayout(device, &pipelineLayoutCreateInfo, NULL, &computePipelineLayout) != VK_SUCCESS) {
+    	throw std::runtime_error("failed to create compute pipeline layout!");
+    }
+
+    VkComputePipelineCreateInfo pipelineCreateInfo = {};
+    pipelineCreateInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+    pipelineCreateInfo.stage = shaderStageCreateInfo;
+    pipelineCreateInfo.layout = computePipelineLayout;
+
+    if (vkCreateComputePipelines(device, VK_NULL_HANDLE, 1, &pipelineCreateInfo, NULL, &computePipeline)) {
+    	throw std::runtime_error("failed to create compute pipeline!");
+    }
+
+    vkDestroyShaderModule(device, compShaderModule, nullptr);
+}
+
 void createDescriptorSetLayout() {
     if (KVK_createDescriptorSetLayout(
     		device, 
-    		0, 
+    		0,
     		VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-    		VK_SHADER_STAGE_VERTEX_BIT,
+    		VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_COMPUTE_BIT,
     		descriptorSetLayout)
+    	!= VK_SUCCESS)
+    {
+    	throw std::runtime_error("failed to create descriptor set layout!");
+    }
+}
+
+void createComputeDescriptorSetLayout() {
+    if (KVK_createDescriptorSetLayout(
+    		device, 
+    		0,
+    		VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+    		VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_COMPUTE_BIT,
+    		computeDescriptorSetLayout)
     	!= VK_SUCCESS)
     {
     	throw std::runtime_error("failed to create descriptor set layout!");
@@ -302,6 +365,30 @@ void createIndexBuffer() {
     vkFreeMemory(device, stagingBufferMemory, nullptr);
 }
 
+void createParticleBuffer() {
+    VkDeviceSize bufferSize = sizeof(particles[0]) * particles.size();
+
+    VkBuffer stagingBuffer;
+    VkDeviceMemory stagingBufferMemory;
+    createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffer, stagingBufferMemory);
+
+    void* data;
+    vkMapMemory(device, stagingBufferMemory, 0, bufferSize, 0, &data);
+    memcpy(data, particles.data(), (size_t) bufferSize);
+    vkUnmapMemory(device, stagingBufferMemory);
+
+    createBuffer(bufferSize,
+    			 VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+    			 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+    			 particleBuffer,
+    			 particleBufferMemory);
+
+    copyBuffer(stagingBuffer, particleBuffer, bufferSize);
+
+    vkDestroyBuffer(device, stagingBuffer,       nullptr);
+    vkFreeMemory   (device, stagingBufferMemory, nullptr);
+}
+
 void createUniformBuffers() {
     VkDeviceSize bufferSize = sizeof(UniformBufferObject);
 
@@ -364,6 +451,56 @@ void createDescriptorSets() {
 
 		vkUpdateDescriptorSets(device, 1, &descriptorWrite, 0, nullptr);
 	}
+}
+
+void createComputeDescriptorPool() {
+	VkDescriptorPoolSize poolSize{};
+	poolSize.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+	poolSize.descriptorCount = static_cast<uint32_t>(PARTICLES_CNT);
+
+	VkDescriptorPoolCreateInfo poolInfo {};
+	poolInfo.sType 			= VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+	poolInfo.poolSizeCount 	= 1;
+	poolInfo.pPoolSizes 	= &poolSize;
+	poolInfo.maxSets 		= static_cast<uint32_t>(1);
+
+	if (vkCreateDescriptorPool(device, &poolInfo, nullptr, &computeDescriptorPool) != VK_SUCCESS) {
+	    throw std::runtime_error("failed to create compute descriptor pool!");
+	}
+}
+
+void createComputeDescriptorSets() {
+	std::vector<VkDescriptorSetLayout> layouts(swapChainImages.size(), computeDescriptorSetLayout);
+
+	VkDescriptorSetAllocateInfo allocInfo{};
+	allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+	allocInfo.descriptorPool = computeDescriptorPool;
+	allocInfo.descriptorSetCount = 1;
+	allocInfo.pSetLayouts = layouts.data();
+
+	if (vkAllocateDescriptorSets(device, &allocInfo, &computeDescriptorSet) != VK_SUCCESS) {
+	    throw std::runtime_error("failed to allocate descriptor sets!");
+	}
+
+    VkDescriptorBufferInfo bufferInfo{};
+    bufferInfo.buffer = particleBuffer;
+    bufferInfo.offset = 0;
+    bufferInfo.range = sizeof(Particle) * PARTICLES_CNT;
+
+    VkWriteDescriptorSet descriptorWrite{};
+	descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	descriptorWrite.dstSet = computeDescriptorSet;
+	descriptorWrite.dstBinding = 0;
+	descriptorWrite.dstArrayElement = 0;
+
+	descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+	descriptorWrite.descriptorCount = 1;
+
+	descriptorWrite.pBufferInfo = &bufferInfo;
+	descriptorWrite.pImageInfo = nullptr; // Optional
+	descriptorWrite.pTexelBufferView = nullptr; // Optional
+
+	vkUpdateDescriptorSets(device, 1, &descriptorWrite, 0, nullptr);
 }
 
 uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties) {
@@ -447,8 +584,8 @@ void createGraphicsPipeline() {
     VkPipelineShaderStageCreateInfo shaderStages[] = {vertShaderStageInfo, fragShaderStageInfo};
 
 
-    auto bindingDescription    = Vertex::getBindingDescription();
-    auto attributeDescriptions = Vertex::getAttributeDescriptions();
+    auto bindingDescription    = Particle::getBindingDescription();
+    auto attributeDescriptions = Particle::getAttributeDescriptions();
 
     VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
     vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
@@ -459,8 +596,8 @@ void createGraphicsPipeline() {
 
     VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
     inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
-    inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_LINE_STRIP;
-    //inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_POINT_LIST;
+    // inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_LINE_STRIP;
+    inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_POINT_LIST;
     inputAssembly.primitiveRestartEnable = VK_FALSE;
 
     VkViewport viewport{};
@@ -650,11 +787,16 @@ void createCommandBuffers() {
         renderPassInfo.clearValueCount = 1;
         renderPassInfo.pClearValues = &clearColor;
 
+        vkCmdBindPipeline(commandBuffers[i], VK_PIPELINE_BIND_POINT_COMPUTE, computePipeline);
+        vkCmdBindDescriptorSets(commandBuffers[i], VK_PIPELINE_BIND_POINT_COMPUTE, computePipelineLayout, 0, 1, &computeDescriptorSet, 0, NULL);
+
+        vkCmdDispatch(commandBuffers[i], ceil(PARTICLES_CNT / COMPUTE_WORKGROUP_SIZE) + 1, 1, 1);
+
         vkCmdBeginRenderPass(commandBuffers[i], &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
         
         vkCmdBindPipeline(commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
 
-        VkBuffer vertexBuffers[] = {vertexBuffer};
+        VkBuffer vertexBuffers[] = {particleBuffer};
         VkDeviceSize offsets[] = {0};
         vkCmdBindVertexBuffers(commandBuffers[i], 0, 1, vertexBuffers, offsets);
 
@@ -1035,13 +1177,21 @@ void cleanupSwapChain() {
 void cleanup() {
     cleanupSwapChain();
 
+    vkDestroyPipeline(device, computePipeline, nullptr);
+    vkDestroyPipelineLayout(device, computePipelineLayout, nullptr);
+
     vkDestroyDescriptorSetLayout(device, descriptorSetLayout, nullptr);
+    vkDestroyDescriptorSetLayout(device, computeDescriptorSetLayout, nullptr);
+    vkDestroyDescriptorPool(device, computeDescriptorPool, nullptr);
 
     vkDestroyBuffer(device, vertexBuffer, nullptr);
     vkFreeMemory(device, vertexBufferMemory, nullptr);
 
     vkDestroyBuffer(device, indexBuffer, nullptr);
     vkFreeMemory(device, indexBufferMemory, nullptr);
+
+    vkDestroyBuffer(device, particleBuffer, nullptr);
+    vkFreeMemory(device, particleBufferMemory, nullptr);
 
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
         vkDestroySemaphore(device, renderFinishedSemaphores[i], nullptr);
@@ -1216,7 +1366,11 @@ void copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size) {
     vkFreeCommandBuffers(device, commandPool, 1, &commandBuffer);
 }
 
+int cnt = 0;
+int t;
+int lt;
 void drawFrame() {
+
     // if (framebufferResized) {
     //     framebufferResized = false;
     //     recreateSwapChain();
@@ -1284,6 +1438,18 @@ void drawFrame() {
     }
 
     currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
+
+    ++cnt;
+	static int st = clock();
+	if (cnt == 0) {
+		lt = clock();
+	}
+	t = clock();
+	if (t - lt > CLOCKS_PER_SEC) {
+		std::cout << "[FPS]: " << cnt << '\n';
+		cnt = 0;
+		lt = t;
+	}
 }
 
 void updateUniformBuffer(uint32_t currentImage) {
@@ -1319,7 +1485,31 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
 
 };
 
+#include <cstdlib>
+
+double randdouble(double dmin, double dmax) {
+    double x = (double)rand() / RAND_MAX;
+    return dmin + x * (dmax - dmin);
+}
+
 int main() {
+	PARTICLES_CNT = 1000000;
+
+	for (size_t i = 0; i < PARTICLES_CNT; ++i) {
+		float x = randdouble(-0.5, 0.5);
+		float y = randdouble(-0.5, 0.5);
+		float vx = randdouble(-0.5, 0.5);
+		float vy = randdouble(-0.5, 0.5);
+		float r = randdouble(0, 1);
+		float g = randdouble(0, 1);
+		float b = randdouble(0, 1);
+		particles.push_back({{x, y}, {vx, vy}, {r, g, b}});
+	}
+
+	for (size_t i = 0; i < PARTICLES_CNT; ++i) {
+		indices.push_back(i);
+	}
+
     HelloTriangleApplication app;
 
     try {

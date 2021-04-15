@@ -35,3 +35,4 @@ all: VulkanTest
 compile_shaders: shaders/shader.vert shaders/shader.frag
 	glslc shaders/shader.vert -o vert.spv
 	glslc shaders/shader.frag -o frag.spv
+	glslc shaders/shader.comp -o comp.spv

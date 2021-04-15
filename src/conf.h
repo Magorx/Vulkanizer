@@ -1,0 +1,1 @@
+const size_t COMPUTE_WORKGROUP_SIZE = 32;

@@ -30,17 +30,11 @@ struct Vertex {
 	}
 };
 
-const std::vector<Vertex> vertices = {
+std::vector<Vertex> vertices = {
     {{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
     {{ 0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},
     {{ 0.5f,  0.5f}, {0.0f, 0.0f, 1.0f}},
     {{-0.5f,  0.5f}, {1.0f, 1.0f, 1.0f}},
-
-    // {{-0.75f, -0.75f}, {1.0f, 1.0f, 0.0f}},
-    // {{-0.60f, -0.75f}, {0.0f, 1.0f, 1.0f}},
-    // {{-0.60f, -0.60f}, {1.0f, 0.0f, 1.0f}}
 };
 
-const std::vector<uint16_t> indices = {
-    0, 1, 2, 3, 0, 2// 4, 5, 6, 6, 5, 1, 6, 1, 0, 4, 0, 3
-};
+std::vector<uint16_t> indices = {};
