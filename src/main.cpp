@@ -25,6 +25,7 @@
 #include "vertex.h"
 #include "ubo.h"
 #include "particle.h"
+#include "push_info.h"
 
 const uint32_t WIDTH  = 800;
 const uint32_t HEIGHT = 600;
@@ -166,6 +167,10 @@ std::vector<VkDeviceMemory> uniformBuffersMemory;
 
 VkDescriptorPool descriptorPool;
 std::vector<VkDescriptorSet> descriptorSets;
+
+// ===============================================
+alignas(16) UniformBufferObject pushInfo;
+double cur_time;
 // ===============================================
 
 void initWindow() {
@@ -257,10 +262,18 @@ void createComputePipeline() {
     shaderStageCreateInfo.module = compShaderModule;
     shaderStageCreateInfo.pName = "main";
 
+    // VkPushConstantRange pushConstants {};
+    // pushConstants.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+    // pushConstants.offset = 0;
+    // pushConstants.size = sizeof(KVK_pushInfo);
+
     VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo {};
     pipelineLayoutCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    pipelineLayoutCreateInfo.setLayoutCount = 1;
-    pipelineLayoutCreateInfo.pSetLayouts = &computeDescriptorSetLayout;
+    pipelineLayoutCreateInfo.setLayoutCount = 2;
+    VkDescriptorSetLayout_T* a[] = {computeDescriptorSetLayout, descriptorSetLayout};
+    pipelineLayoutCreateInfo.pSetLayouts = a;
+    pipelineLayoutCreateInfo.pushConstantRangeCount = 0; // Optional
+    pipelineLayoutCreateInfo.pPushConstantRanges = nullptr; // Optional
     if (vkCreatePipelineLayout(device, &pipelineLayoutCreateInfo, NULL, &computePipelineLayout) != VK_SUCCESS) {
     	throw std::runtime_error("failed to create compute pipeline layout!");
     }
@@ -280,7 +293,7 @@ void createComputePipeline() {
 void createDescriptorSetLayout() {
     if (KVK_createDescriptorSetLayout(
     		device, 
-    		0,
+    		1,
     		VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
     		VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_COMPUTE_BIT,
     		descriptorSetLayout)
@@ -396,7 +409,11 @@ void createUniformBuffers() {
     uniformBuffersMemory.resize(swapChainImages.size());
 
     for (size_t i = 0; i < swapChainImages.size(); i++) {
-        createBuffer(bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, uniformBuffers[i], uniformBuffersMemory[i]);
+        createBuffer(bufferSize,
+        			 VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+        			 VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, 
+        			 uniformBuffers[i],
+        			 uniformBuffersMemory[i]);
     }
 }
 
@@ -439,7 +456,7 @@ void createDescriptorSets() {
 	    VkWriteDescriptorSet descriptorWrite{};
 		descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 		descriptorWrite.dstSet = descriptorSets[i];
-		descriptorWrite.dstBinding = 0;
+		descriptorWrite.dstBinding = 1;
 		descriptorWrite.dstArrayElement = 0;
 
 		descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
@@ -499,6 +516,28 @@ void createComputeDescriptorSets() {
 	descriptorWrite.pBufferInfo = &bufferInfo;
 	descriptorWrite.pImageInfo = nullptr; // Optional
 	descriptorWrite.pTexelBufferView = nullptr; // Optional
+
+	// for (size_t i = 0; i < swapChainImages.size(); i++) {
+	//     VkDescriptorBufferInfo bufferInfo{};
+	//     bufferInfo.buffer = uniformBuffers[i];
+	//     bufferInfo.offset = 0;
+	//     bufferInfo.range = sizeof(UniformBufferObject);
+
+	//     VkWriteDescriptorSet descriptorWrite{};
+	// 	descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	// 	descriptorWrite.dstSet = computeDescriptorSet;
+	// 	descriptorWrite.dstBinding = 1;
+	// 	descriptorWrite.dstArrayElement = 0;
+
+	// 	descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	// 	descriptorWrite.descriptorCount = 1;
+
+	// 	descriptorWrite.pBufferInfo = &bufferInfo;
+	// 	descriptorWrite.pImageInfo = nullptr; // Optional
+	// 	descriptorWrite.pTexelBufferView = nullptr; // Optional
+
+	// 	vkUpdateDescriptorSets(device, 1, &descriptorWrite, 0, nullptr);
+	// }
 
 	vkUpdateDescriptorSets(device, 1, &descriptorWrite, 0, nullptr);
 }
@@ -677,8 +716,8 @@ void createGraphicsPipeline() {
 
     VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
     pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    pipelineLayoutInfo.setLayoutCount = 1; // Optional
-    pipelineLayoutInfo.pSetLayouts = &descriptorSetLayout; // Optional
+    pipelineLayoutInfo.setLayoutCount = 0; // Optional
+    pipelineLayoutInfo.pSetLayouts = nullptr; // Optional
     pipelineLayoutInfo.pushConstantRangeCount = 0; // Optional
     pipelineLayoutInfo.pPushConstantRanges = nullptr; // Optional
 
@@ -788,7 +827,11 @@ void createCommandBuffers() {
         renderPassInfo.pClearValues = &clearColor;
 
         vkCmdBindPipeline(commandBuffers[i], VK_PIPELINE_BIND_POINT_COMPUTE, computePipeline);
-        vkCmdBindDescriptorSets(commandBuffers[i], VK_PIPELINE_BIND_POINT_COMPUTE, computePipelineLayout, 0, 1, &computeDescriptorSet, 0, NULL);
+        //vkCmdBindDescriptorSets(commandBuffers[i], VK_PIPELINE_BIND_POINT_COMPUTE, computePipelineLayout, 0, 1, &computeDescriptorSet, 0, NULL);
+        
+        VkDescriptorSet_T* arr[] = {computeDescriptorSet, descriptorSets[i]};
+
+        vkCmdBindDescriptorSets(commandBuffers[i], VK_PIPELINE_BIND_POINT_COMPUTE, computePipelineLayout, 0, 2, arr, 0, nullptr);
 
         vkCmdDispatch(commandBuffers[i], ceil(PARTICLES_CNT / COMPUTE_WORKGROUP_SIZE) + 1, 1, 1);
 
@@ -801,8 +844,6 @@ void createCommandBuffers() {
         vkCmdBindVertexBuffers(commandBuffers[i], 0, 1, vertexBuffers, offsets);
 
         vkCmdBindIndexBuffer(commandBuffers[i], indexBuffer, 0, VK_INDEX_TYPE_UINT16);
-        
-        vkCmdBindDescriptorSets(commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSets[i], 0, nullptr);
 
         vkCmdDrawIndexed(commandBuffers[i], static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
 
@@ -1440,7 +1481,6 @@ void drawFrame() {
     currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
 
     ++cnt;
-	static int st = clock();
 	if (cnt == 0) {
 		lt = clock();
 	}
@@ -1453,20 +1493,25 @@ void drawFrame() {
 }
 
 void updateUniformBuffer(uint32_t currentImage) {
-    static auto startTime = std::chrono::high_resolution_clock::now();
+    // static auto startTime = std::chrono::high_resolution_clock::now();
 
-    auto currentTime = std::chrono::high_resolution_clock::now();
-    float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
+    // auto currentTime = std::chrono::high_resolution_clock::now();
+    // float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
+	
+    double mx, my;
+    glfwGetCursorPos(window, &mx, &my);
+    pushInfo.mouse_pos.x = (mx / WIDTH - 0.5) * 2;
+	pushInfo.mouse_pos.y = (my / HEIGHT - 0.5) * 2;
 
-    UniformBufferObject ubo{};
-	ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-	ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-	ubo.proj = glm::perspective(glm::radians(45.0f), swapChainExtent.width / (float) swapChainExtent.height, 0.1f, 10.0f);
-	ubo.proj[1][1] *= -1;
+	// std::cout << pushInfo.mouse_pos.x << ' ' << pushInfo.mouse_pos.y << '\n';
+
+    double t = glfwGetTime();
+    pushInfo.dt = cur_time - t;
+    cur_time = t;
 
 	void* data;
-	vkMapMemory(device, uniformBuffersMemory[currentImage], 0, sizeof(ubo), 0, &data);
-		memcpy(data, &ubo, sizeof(ubo));
+	vkMapMemory(device, uniformBuffersMemory[currentImage], 0, sizeof(&pushInfo), 0, &data);
+		memcpy(data, &pushInfo, sizeof(pushInfo));
 	vkUnmapMemory(device, uniformBuffersMemory[currentImage]);
 }
 
@@ -1493,17 +1538,17 @@ double randdouble(double dmin, double dmax) {
 }
 
 int main() {
-	PARTICLES_CNT = 1000000;
+	PARTICLES_CNT = 100000;
 
 	for (size_t i = 0; i < PARTICLES_CNT; ++i) {
 		float x = randdouble(-0.5, 0.5);
 		float y = randdouble(-0.5, 0.5);
-		float vx = randdouble(-0.5, 0.5);
-		float vy = randdouble(-0.5, 0.5);
+		float vx = randdouble(-1, 0.5);
+		float vy = randdouble(-1, 0.5);
 		float r = randdouble(0, 1);
 		float g = randdouble(0, 1);
 		float b = randdouble(0, 1);
-		particles.push_back({{x, y}, {vx, vy}, {r, g, b}});
+		particles.push_back({{x, y}, {x, y}, {vx, vy}, {r, g, b}});
 	}
 
 	for (size_t i = 0; i < PARTICLES_CNT; ++i) {

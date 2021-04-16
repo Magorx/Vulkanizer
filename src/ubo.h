@@ -1,6 +1,5 @@
 struct UniformBufferObject {
-    alignas(16) glm::mat4 model;
-    alignas(16) glm::mat4 view;
-    alignas(16) glm::mat4 proj;
+    alignas(8) glm::vec2 mouse_pos;
+    alignas(4) float dt;
 };
 

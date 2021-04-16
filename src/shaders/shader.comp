@@ -1,11 +1,12 @@
 #version 450
 #extension GL_ARB_separate_shader_objects : enable
 
-#define PRT_CNT 1000000
+#define PRT_CNT 100000
 #define WORKGROUP_SIZE 32
 layout (local_size_x = WORKGROUP_SIZE, local_size_y = 1, local_size_z = 1 ) in;
 
 struct Particle {
+	vec2 anchor;
 	vec2 pos;
 	vec2 vel;
 	vec3 color;
@@ -16,6 +17,16 @@ layout(std140, binding = 0) buffer buf
    Particle parts[];
 };
 
+layout(std140, set = 1, binding = 1) uniform UniformBufferObject {
+    vec2 mouse_pos;
+    float dt;
+} ubo;
+
+vec2 displacement(float i) {
+	// int x = (7 * i + 2 * i * i + 5 * i * i * i + 7 * i * i * i * i + 19 * i * i * i * i * i) % PRT_CNT;
+	return vec2(sin(i), cos(i)) * i / PRT_CNT / 5;
+}
+
 void main() {
 	uint id = gl_GlobalInvocationID.x;
 	if (id > PRT_CNT) {
@@ -24,8 +35,15 @@ void main() {
 
 	Particle pt = parts[id];
 
-	pt.vel += normalize(vec2(0, 0) - pt.pos) / 100;
+	vec2 dvel = ubo.mouse_pos + displacement(float(id)) - pt.pos + pt.vel / 10;
+	if (dvel.x != 0 || dvel.y != 0) {
+		pt.vel += normalize(dvel) / 20;
+	}
+
 	pt.pos += pt.vel / 100;
+	if (length(pt.vel) > 1) {
+		pt.vel *= 0.99;
+	}
 
 	parts[id] = pt;
 }
