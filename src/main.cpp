@@ -28,8 +28,8 @@
 #include "push_info.h"
 #include "tracker_fps.h"
 
-const uint32_t WIDTH  = 800;
-const uint32_t HEIGHT = 600;
+uint32_t WIDTH  = 2000;
+uint32_t HEIGHT = 1000;
 
 const int MAX_FRAMES_IN_FLIGHT = 4;
 
@@ -85,6 +85,7 @@ public:
 
 void run() {
     initWindow();
+    initApp();
     initVulkan();
     mainLoop();
     cleanup();
@@ -181,14 +182,41 @@ void initWindow() {
 
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 
-    window = glfwCreateWindow(WIDTH, HEIGHT, "Merlin", nullptr, nullptr);
+    auto monitor = glfwGetPrimaryMonitor();
+    auto mode = glfwGetVideoMode(monitor);
+    WIDTH = mode->width;
+    HEIGHT = mode->height;
+
+    window = glfwCreateWindow(WIDTH, HEIGHT, "Merlin", monitor, nullptr);
     glfwSetWindowUserPointer(window, this);
+    
     glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
+    glfwSetMouseButtonCallback(window, mouseButtonCallback);
 }
 
 static void framebufferResizeCallback(GLFWwindow* window, int width, int height) {
     auto app = reinterpret_cast<HelloTriangleApplication*>(glfwGetWindowUserPointer(window));
     app->framebufferResized = true;
+}
+
+static void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods) {
+	auto app = reinterpret_cast<HelloTriangleApplication*>(glfwGetWindowUserPointer(window));
+
+	if (button == GLFW_MOUSE_BUTTON_LEFT) {
+		if (action == GLFW_PRESS) {
+			app->pushInfo.mouse_hold |= 1;
+		} else {
+			app->pushInfo.mouse_hold &= ~1;
+		}
+	}
+
+	if (button == GLFW_MOUSE_BUTTON_RIGHT) {
+		if (action == GLFW_PRESS) {
+			app->pushInfo.mouse_hold |= 2;
+		} else {
+			app->pushInfo.mouse_hold &= ~2;
+		}
+	}
 }
 
 void initVulkan() {
@@ -212,8 +240,8 @@ void initVulkan() {
     createComputeDescriptorSetLayout();
     createComputePipeline();
 
-    createVertexBuffer();
-    createIndexBuffer();
+    // createVertexBuffer();
+    // createIndexBuffer();
     createParticleBuffer();
     createUniformBuffers();
 
@@ -849,7 +877,7 @@ void createCommandBuffers() {
         //vkCmdBindIndexBuffer(commandBuffers[i], indexBuffer, 0, VK_INDEX_TYPE_UINT16);
 
         //vkCmdDrawIndexed(commandBuffers[i], static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
-        vkCmdDraw(commandBuffers[i], indices.size(), 1, 0, 0);
+        vkCmdDraw(commandBuffers[i], particles.size(), 1, 0, 0);
 
         vkCmdEndRenderPass(commandBuffers[i]);
         if (vkEndCommandBuffer(commandBuffers[i]) != VK_SUCCESS) {
@@ -1232,11 +1260,11 @@ void cleanup() {
     vkDestroyDescriptorSetLayout(device, computeDescriptorSetLayout, nullptr);
     vkDestroyDescriptorPool(device, computeDescriptorPool, nullptr);
 
-    vkDestroyBuffer(device, vertexBuffer, nullptr);
-    vkFreeMemory(device, vertexBufferMemory, nullptr);
+    // vkDestroyBuffer(device, vertexBuffer, nullptr);
+    // vkFreeMemory(device, vertexBufferMemory, nullptr);
 
-    vkDestroyBuffer(device, indexBuffer, nullptr);
-    vkFreeMemory(device, indexBufferMemory, nullptr);
+    // vkDestroyBuffer(device, indexBuffer, nullptr);
+    // vkFreeMemory(device, indexBufferMemory, nullptr);
 
     vkDestroyBuffer(device, particleBuffer, nullptr);
     vkFreeMemory(device, particleBufferMemory, nullptr);
@@ -1519,6 +1547,38 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
     return VK_FALSE;
 }
 
+void initApp() {
+	auto monitor = glfwGetPrimaryMonitor();
+    auto mode = glfwGetVideoMode(monitor);
+    WIDTH = mode->width;
+    HEIGHT = mode->height;
+
+    PARTICLES_CNT = WIDTH * HEIGHT * 0.15;
+
+	size_t w = sqrt((float) PARTICLES_CNT * WIDTH / HEIGHT);
+	size_t h = ceil((float) PARTICLES_CNT / w);
+
+	PARTICLES_CNT = w * h;
+	pushInfo.PARTICLE_COUNT = PARTICLES_CNT;
+
+	for (size_t y = 0; y < h; ++y) {
+		float yy = ((float) y / h - 0.5f) * 2;
+		// std::cout << y << ' ' << yy << '\n';
+		for (size_t x = 0; x < w; ++x) {
+			float xx = ((float) x / w - 0.5f) * 2;
+
+			// float vx = randfloat(0, 1);
+			// float vy = randfloat(-1, 1);
+			float r = 0.1 + (float) x * y / w / h;
+			float g = 0.1 + (float) x / w;
+			float b = (float) y / h;
+			particles.push_back({{xx, yy}, {xx, yy}, {0, 0}, {r, g, b}});
+		}
+	}
+
+	std::cout << "W: " << w << " H: " << h << " -> " << w * h << '\n';
+}
+
 };
 
 #include <cstdlib>
@@ -1529,40 +1589,6 @@ double randdouble(double dmin, double dmax) {
 }
 
 int main() {
-	PARTICLES_CNT = WIDTH * HEIGHT * 0.05;
-
-	size_t w = sqrt((float) PARTICLES_CNT * WIDTH / HEIGHT);
-	size_t h = ceil((float) PARTICLES_CNT / w);
-
-	for (size_t y = 0; y < h; ++y) {
-		float yy = ((float) y / h - 0.5f) * 2;
-		// std::cout << y << ' ' << yy << '\n';
-		for (size_t x = 0; x < w; ++x) {
-			float xx = ((float) x / w - 0.5f) * 2;
-
-			// float vx = randfloat(0, 1);
-			// float vy = randfloat(-1, 1);
-			float r = 150;
-			float g = (float) x / w;
-			float b = (float) y / h;
-			particles.push_back({{xx, yy}, {xx, yy}, {0, 0}, {r, g, b}});
-			// std::cout << particles[particles.size() - 1].anchor.x << ' ' 
-			// 		  << particles[particles.size() - 1].anchor.y << ' ' 
-			// 		  << particles[particles.size() - 1].pos.x << ' ' 
-			// 		  << particles[particles.size() - 1].pos.y << ' ' 
-			// 		  << '\n';
-		}
-	}
-
-	
-
-	std::cout << "W: " << w << " H: " << h << " -> " << w * h << '\n';
-
-	for (size_t i = 0; i < particles.size(); ++i) {
-		indices.push_back(i);
-	}
-	printf("indices: %lu\n", indices.size());
-
     HelloTriangleApplication app;
 
     try {
