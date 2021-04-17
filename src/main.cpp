@@ -26,11 +26,12 @@
 #include "ubo.h"
 #include "particle.h"
 #include "push_info.h"
+#include "tracker_fps.h"
 
 const uint32_t WIDTH  = 800;
 const uint32_t HEIGHT = 600;
 
-const int MAX_FRAMES_IN_FLIGHT = 2;
+const int MAX_FRAMES_IN_FLIGHT = 4;
 
 const std::vector<const char*> deviceExtensions = {
     VK_KHR_SWAPCHAIN_EXTENSION_NAME
@@ -171,6 +172,8 @@ std::vector<VkDescriptorSet> descriptorSets;
 // ===============================================
 alignas(16) UniformBufferObject pushInfo;
 double cur_time;
+
+TrackerFPS trackerFPS;
 // ===============================================
 
 void initWindow() {
@@ -843,9 +846,10 @@ void createCommandBuffers() {
         VkDeviceSize offsets[] = {0};
         vkCmdBindVertexBuffers(commandBuffers[i], 0, 1, vertexBuffers, offsets);
 
-        vkCmdBindIndexBuffer(commandBuffers[i], indexBuffer, 0, VK_INDEX_TYPE_UINT16);
+        //vkCmdBindIndexBuffer(commandBuffers[i], indexBuffer, 0, VK_INDEX_TYPE_UINT16);
 
-        vkCmdDrawIndexed(commandBuffers[i], static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
+        //vkCmdDrawIndexed(commandBuffers[i], static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
+        vkCmdDraw(commandBuffers[i], indices.size(), 1, 0, 0);
 
         vkCmdEndRenderPass(commandBuffers[i]);
         if (vkEndCommandBuffer(commandBuffers[i]) != VK_SUCCESS) {
@@ -1113,12 +1117,12 @@ void pickPhysicalDevice() {
     std::vector<VkPhysicalDevice> devices(deviceCount);
     vkEnumeratePhysicalDevices(instance, &deviceCount, devices.data());
 
-    // std::cout << "Physical devices:\n";
-    // for (const auto& device : devices) {
-    //     VkPhysicalDeviceProperties device_prop;
-    //     vkGetPhysicalDeviceProperties(device, &device_prop);
-    //     std::cout << device_prop.deviceName << '\n';
-    // }
+    std::cout << "Physical devices:\n";
+    for (const auto& device : devices) {
+        VkPhysicalDeviceProperties device_prop;
+        vkGetPhysicalDeviceProperties(device, &device_prop);
+        std::cout << device_prop.deviceName << "max vert: " << device_prop.limits.maxVertexOutputComponents << '\n';
+    }
 
     for (const auto& device : devices) {
         if (isDeviceSuitable(device)) {
@@ -1182,9 +1186,12 @@ void setupDebugMessenger() {
 }
 
 void mainLoop() {
+	trackerFPS.init();
+
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
         drawFrame();
+        trackerFPS.tick();
     }
 
     vkDeviceWaitIdle(device);
@@ -1479,25 +1486,9 @@ void drawFrame() {
     }
 
     currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
-
-    ++cnt;
-	if (cnt == 0) {
-		lt = clock();
-	}
-	t = clock();
-	if (t - lt > CLOCKS_PER_SEC) {
-		std::cout << "[FPS]: " << cnt << '\n';
-		cnt = 0;
-		lt = t;
-	}
 }
 
 void updateUniformBuffer(uint32_t currentImage) {
-    // static auto startTime = std::chrono::high_resolution_clock::now();
-
-    // auto currentTime = std::chrono::high_resolution_clock::now();
-    // float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
-	
     double mx, my;
     glfwGetCursorPos(window, &mx, &my);
     pushInfo.mouse_pos.x = (mx / WIDTH - 0.5) * 2;
@@ -1506,7 +1497,7 @@ void updateUniformBuffer(uint32_t currentImage) {
 	// std::cout << pushInfo.mouse_pos.x << ' ' << pushInfo.mouse_pos.y << '\n';
 
     double t = glfwGetTime();
-    pushInfo.dt = cur_time - t;
+    pushInfo.dt = t - cur_time;
     cur_time = t;
 
 	void* data;
@@ -1538,22 +1529,39 @@ double randdouble(double dmin, double dmax) {
 }
 
 int main() {
-	PARTICLES_CNT = 100000;
+	PARTICLES_CNT = WIDTH * HEIGHT * 0.05;
 
-	for (size_t i = 0; i < PARTICLES_CNT; ++i) {
-		float x = randdouble(-0.5, 0.5);
-		float y = randdouble(-0.5, 0.5);
-		float vx = randdouble(-1, 0.5);
-		float vy = randdouble(-1, 0.5);
-		float r = randdouble(0, 1);
-		float g = randdouble(0, 1);
-		float b = randdouble(0, 1);
-		particles.push_back({{x, y}, {x, y}, {vx, vy}, {r, g, b}});
+	size_t w = sqrt((float) PARTICLES_CNT * WIDTH / HEIGHT);
+	size_t h = ceil((float) PARTICLES_CNT / w);
+
+	for (size_t y = 0; y < h; ++y) {
+		float yy = ((float) y / h - 0.5f) * 2;
+		// std::cout << y << ' ' << yy << '\n';
+		for (size_t x = 0; x < w; ++x) {
+			float xx = ((float) x / w - 0.5f) * 2;
+
+			// float vx = randfloat(0, 1);
+			// float vy = randfloat(-1, 1);
+			float r = 150;
+			float g = (float) x / w;
+			float b = (float) y / h;
+			particles.push_back({{xx, yy}, {xx, yy}, {0, 0}, {r, g, b}});
+			// std::cout << particles[particles.size() - 1].anchor.x << ' ' 
+			// 		  << particles[particles.size() - 1].anchor.y << ' ' 
+			// 		  << particles[particles.size() - 1].pos.x << ' ' 
+			// 		  << particles[particles.size() - 1].pos.y << ' ' 
+			// 		  << '\n';
+		}
 	}
 
-	for (size_t i = 0; i < PARTICLES_CNT; ++i) {
+	
+
+	std::cout << "W: " << w << " H: " << h << " -> " << w * h << '\n';
+
+	for (size_t i = 0; i < particles.size(); ++i) {
 		indices.push_back(i);
 	}
+	printf("indices: %lu\n", indices.size());
 
     HelloTriangleApplication app;
 
