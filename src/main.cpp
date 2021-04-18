@@ -192,6 +192,7 @@ void initWindow() {
     
     glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
     glfwSetMouseButtonCallback(window, mouseButtonCallback);
+    glfwSetScrollCallback(window, scrollCallback);
 }
 
 static void framebufferResizeCallback(GLFWwindow* window, int width, int height) {
@@ -217,6 +218,13 @@ static void mouseButtonCallback(GLFWwindow* window, int button, int action, int 
 			app->pushInfo.mouse_hold &= ~2;
 		}
 	}
+}
+
+static void scrollCallback(GLFWwindow* window, double xoffset, double yoffset) {
+	auto app = reinterpret_cast<HelloTriangleApplication*>(glfwGetWindowUserPointer(window));
+
+	app->pushInfo.power_delta += yoffset;
+	//std::cout << "delta: " << app->pushInfo.power_delta << '\n';
 }
 
 void initVulkan() {
@@ -1145,12 +1153,12 @@ void pickPhysicalDevice() {
     std::vector<VkPhysicalDevice> devices(deviceCount);
     vkEnumeratePhysicalDevices(instance, &deviceCount, devices.data());
 
-    std::cout << "Physical devices:\n";
-    for (const auto& device : devices) {
-        VkPhysicalDeviceProperties device_prop;
-        vkGetPhysicalDeviceProperties(device, &device_prop);
-        std::cout << device_prop.deviceName << "max vert: " << device_prop.limits.maxVertexOutputComponents << '\n';
-    }
+    // std::cout << "Physical devices:\n";
+    // for (const auto& device : devices) {
+    //     VkPhysicalDeviceProperties device_prop;
+    //     vkGetPhysicalDeviceProperties(device, &device_prop);
+    //     std::cout << device_prop.deviceName << "max vert: " << device_prop.limits.maxVertexOutputComponents << '\n';
+    // }
 
     for (const auto& device : devices) {
         if (isDeviceSuitable(device)) {
@@ -1569,7 +1577,7 @@ void initApp() {
 
 			// float vx = randfloat(0, 1);
 			// float vy = randfloat(-1, 1);
-			float r = 0.1 + (float) x * y / w / h;
+			float r = 0.2 + (float) x * y / w / h;
 			float g = 0.1 + (float) x / w;
 			float b = (float) y / h;
 			particles.push_back({{xx, yy}, {xx, yy}, {0, 0}, {r, g, b}});

@@ -13,6 +13,6 @@ void main() {
     // gl_Position = ubo.proj * ubo.view * ubo.model * vec4(inPosition, 0.0, 1.0);
     gl_Position = vec4(inPosition, 0.0, 1.0);
     gl_PointSize = 1.0;
-    fragColor = inColor * (1 + length(inVelocity));
+    fragColor = inColor * (1 + length(inVelocity) / 1.2) + vec3(abs(inVelocity.x) / 1.2 + abs(inVelocity.y) / 1.2, 0, 0);
     fragPos = inPosition;
 }

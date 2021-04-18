@@ -25,6 +25,7 @@ layout(std140, set = 1, binding = 1) uniform UniformBufferObject {
     float dt;
     int mouse_hold;
     int PARTICLE_COUNT;
+    float power_delta;
 } ubo;
 
 void main() {
@@ -41,18 +42,21 @@ void main() {
 	float l_da = length(delta_anchor);
 	float l_dm = length(delta_mouse);
 
+	vec2 dvel_mouse;
+	vec2 dvel_anchor;
+
 	if (l_da > 0) {
 		pt.vel += delta_anchor / l_da * (5 * pow(l_da, 1.8));
 	}
 
-	if (l_dm > 0 && (ubo.mouse_hold & 1) != 0) {	
-		delta_mouse = delta_mouse / l_dm / pow(1 + l_dm, 2) / 30;
-		pt.vel -= delta_mouse;
+	if (l_dm > 0 && (ubo.mouse_hold & 1) != 0) {
+		dvel_mouse = delta_mouse / l_dm / pow(0.9 + ubo.power_delta / 50 + l_dm, 20);
+		pt.vel -= dvel_mouse;
 	}
 
-	if (l_dm > 0 && (ubo.mouse_hold & 2) != 0) {	
-		delta_mouse = delta_mouse / l_dm / pow(1 + l_dm, 2) / 15;
-		pt.vel += delta_mouse;
+	if (l_dm > 0 && (ubo.mouse_hold & 2) != 0) {
+		dvel_mouse = delta_mouse / l_dm / pow(1.1 + ubo.power_delta / 50 + l_dm, 20);
+		pt.vel += dvel_mouse;
 	}
 
 	
