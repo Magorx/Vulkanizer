@@ -62,7 +62,6 @@ void main() {
 	
 	pt.pos += pt.vel * ubo.dt / 2;
 	pt.vel *= 0.994;
-	
 
 	parts[id] = pt;
 }
