@@ -26,9 +26,15 @@ endif
 run: VulkanTest
 	./$(CUR_PROG)
 
-VulkanTest: main.cpp vertex.h
+VulkanTest: main.cpp vertex.h color.o color_map.o
 	make compile_shaders
-	$(CPP) $(CFLAGS) -o $(CUR_PROG) main.cpp $(LDFLAGS)
+	$(CPP) $(CFLAGS) -o $(CUR_PROG) main.cpp color.o color_map.o $(LDFLAGS) -lsfml-graphics -lsfml-window -lsfml-system
+
+color.o: color_p4.cpp color_p4.h
+	$(CPP) $(CFLAGS) color_p4.cpp -c -o color.o
+
+color_map.o: color_map_p4.cpp color_map_p4.h
+	$(CPP) $(CFLAGS) color_map_p4.cpp -c -o color_map.o
 
 all: VulkanTest
 

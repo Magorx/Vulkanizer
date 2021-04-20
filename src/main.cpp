@@ -28,6 +28,10 @@
 #include "push_info.h"
 #include "tracker_fps.h"
 
+#include "intrinsic_types.h"
+
+#include "color_map_p4.h"
+
 uint32_t WIDTH  = 2000;
 uint32_t HEIGHT = 1000;
 
@@ -94,6 +98,7 @@ void run() {
 static std::vector<char> readFile(const std::string& filename) {
     std::ifstream file(filename, std::ios::ate | std::ios::binary);
     if (!file.is_open()) {
+        std::cout << "filename: " << filename << '\n';
         throw std::runtime_error("failed to open file!");
     }
 
@@ -1555,11 +1560,56 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
     return VK_FALSE;
 }
 
+float mandel(float fragPos_x, float fragPos_y) {
+	float mr2 = 100;
+	int max_itter = 255;
+	float width = 2;
+
+	float cmap_width = 1920;
+	float cmap_height = 1080;
+
+	float dx = width;
+	float dy = width / cmap_width * cmap_height;
+
+	float sx = fragPos_x * dx;
+	float sy = fragPos_y * dy;
+	
+	float x0 = sx;
+	float y0 = sy;
+
+	float X = x0;
+	float Y = y0;
+
+	int itter = 0;
+	int N = 0;
+	for (;;) {
+		++N;
+		float x2 = X * X,
+			  y2 = Y * Y,
+			  xy = X * Y;
+
+		float r2 = x2 + y2;
+
+		if (r2 > mr2 || N >= max_itter) break;
+		++itter;
+
+		X = x2 - y2 + x0;
+		Y = xy + xy + y0;
+	}
+
+	return (float) itter / max_itter;
+}
+
 void initApp() {
 	auto monitor = glfwGetPrimaryMonitor();
     auto mode = glfwGetVideoMode(monitor);
     WIDTH = mode->width;
     HEIGHT = mode->height;
+
+    ColorMapP4 cmap;
+    if (!cmap.ctor("image.png")) {
+        throw std::runtime_error("Failed to open the picture in initApp");
+    }
 
     PARTICLES_CNT = WIDTH * HEIGHT * 0.15;
 
@@ -1580,11 +1630,22 @@ void initApp() {
 			float r = 0.2 + (float) x * y / w / h;
 			float g = 0.1 + (float) x / w;
 			float b = (float) y / h;
+
+			// float m = mandel(xx, yy);
+			// r *= m;
+			// g *= m;
+			// b *= m;
+
+			r = cmap.get((xx + 1.0f) / 2.0f, (yy + 1.0f) / 2.0f).r / 256.0f;
+			g = cmap.get((xx + 1.0f) / 2.0f, (yy + 1.0f) / 2.0f).g / 256.0f;
+			b = cmap.get((xx + 1.0f) / 2.0f, (yy + 1.0f) / 2.0f).b / 256.0f;
+
 			particles.push_back({{xx, yy}, {xx, yy}, {0, 0}, {r, g, b}});
 		}
 	}
 
-	std::cout << "W: " << w << " H: " << h << " -> " << w * h << '\n';
+	std::cout << "screen: " << mode->width << "x" << mode->height << "\n";
+	std::cout << "particles: " << w << "x" << h << '\n';
 }
 
 };
